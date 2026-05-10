@@ -1048,12 +1048,10 @@ function insertAccent(inputEl, ch){
 
 let answered=false;
 let typingTimer=null;
-async function setTyping(t){
+function setTyping(t){
   if(!matchId)return;
-  try{
-    const update={};update[role+'Typing']=t;update.lastUpdate=serverTimestamp();
-    await updateDoc(doc(db,'matches',matchId),update);
-  }catch(e){}
+  const update={};update[role+'Typing']=t;update.lastUpdate=serverTimestamp();
+  updateDoc(doc(db,'matches',matchId),update).catch(()=>{});
   if(t){
     if(typingTimer)clearTimeout(typingTimer);
     typingTimer=setTimeout(()=>setTyping(false),2000);
@@ -1131,20 +1129,19 @@ async function checkAnswer(){
   barWrap.innerHTML=`<div class="auto-bar${ok?'':' bad'}"></div>`;
   document.getElementById('answer-box-wrap').appendChild(barWrap);
   document.getElementById('you-score').textContent=myScore;
-  // Push update to Firebase (multiplayer only)
-  if(matchId){
-    try{
-      const update={};
-      update[role+'Score']=myScore;
-      update[role+'Typing']=false;
-      update.currentCard=myIndex+1;
-      update.lastUpdate=serverTimestamp();
-      await updateDoc(doc(db,'matches',matchId),update);
-    }catch(e){console.error(e);}
-  }
-  // Auto-advance after 2 seconds
+  // Schedule auto-advance FIRST so network slowness can never freeze the game
   if(autoTimer){clearTimeout(autoTimer);}
   autoTimer = setTimeout(()=>{autoTimer=null;nextCard();}, 2000);
+  // Push update to Firebase (multiplayer only) — fire-and-forget, do NOT await
+  // If the network is slow or fails, the game still advances locally.
+  if(matchId){
+    const update={};
+    update[role+'Score']=myScore;
+    update[role+'Typing']=false;
+    update.currentCard=myIndex+1;
+    update.lastUpdate=serverTimestamp();
+    updateDoc(doc(db,'matches',matchId),update).catch(e=>console.error('score update failed',e));
+  }
 }
 
 // Show a mistake row in the running panel below the scoreboard
